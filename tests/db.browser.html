@@ -1,0 +1,15 @@
+<!doctype html><meta charset="utf-8"><pre id="result">running</pre><script type="module">
+import * as d from '../js/db.js';
+import {calculateMonths} from '../js/calculator.js';
+const name='test-'+crypto.randomUUID();let db;const results=[];const check=(v)=>{if(!v)throw Error('assertion failed')};const test=async(name,f)=>{try{await f();results.push({name,pass:true})}catch(e){results.push({name,pass:false,error:String(e)})}};const rejects=async f=>{let failed=false;try{await f()}catch{failed=true}check(failed)};
+try{db=await d.openDB(name);const s={month:'2026-11',income:290000,fixedCosts:[{id:1,name:'住宅費',amount:101000}],carryMode:'auto',manualCarry:null};let id;
+await test('initial settings',async()=>{check((await d.getMonths(db)).length===0);await d.saveMonth(db,s);check((await d.getMonth(db,s.month)).income===290000)});
+await test('add and query',async()=>{id=await d.addExpense(db,'2026-11-26',192500,'2026-11-26');check((await d.getExpensesForDate(db,'2026-11-26'))[0].id===id);check((await d.getExpensesForMonth(db,'2026-11')).length===1)});
+await test('month generation and carry',async()=>{check((await d.ensureMonthsThrough(db,'2027-01')).length===2);const r=calculateMonths(await d.getMonths(db),await d.getExpenses(db));check(r[1].carry===-3500&&r[2].carry===0)});
+await test('manual settings preserved',async()=>{const dec=await d.getMonth(db,'2026-12');await d.saveMonth(db,{...dec,carryMode:'manual',manualCarry:-1000});await d.ensureMonthsThrough(db,'2027-01');check((await d.getMonth(db,'2026-12')).manualCarry===-1000)});
+await test('edit and recalculate',async()=>{await d.updateExpense(db,id,200000,'2026-11-26');const r=calculateMonths(await d.getMonths(db),await d.getExpenses(db));check(r[0].monthEnd===-11000&&r[1].carry===-1000)});
+await test('reject invalid writes',async()=>{await rejects(()=>d.addExpense(db,'2026-11-27',1,'2026-11-26'));await rejects(()=>d.addExpense(db,'2026-11-26',0,'2026-11-26'));await rejects(()=>d.addExpense(db,'2026-02-30',1,'2026-11-26'));await rejects(()=>d.addExpense(db,'2026-10-01',1,'2026-11-26'));check((await d.getExpenses(db)).length===1)});
+await test('persistence after reopen',async()=>{db.close();db=await d.openDB(name);check((await d.getExpenses(db))[0].amount===200000)});
+await test('delete and missing id',async()=>{await d.deleteExpense(db,id);check((await d.getExpenses(db)).length===0);await rejects(()=>d.deleteExpense(db,id))});
+}finally{db?.close();indexedDB.deleteDatabase(name);document.querySelector('#result').textContent=JSON.stringify(results);window.testResults=results;}
+</script>

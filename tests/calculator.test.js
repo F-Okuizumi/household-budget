@@ -1,0 +1,13 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {calculateMonth,calculateMonths,daysInMonth} from '../js/calculator.js';
+const s=(month,extra={})=>({month,income:290000,fixedCosts:[{amount:101000}],...extra});
+const e=(date,amount)=>({date,amount});
+test('normal and month-start accrual',()=>{const r=calculateMonth(s('2026-11'));assert.equal(r.dailyBudget.value,6300);assert.equal(r.days[25].available.display,163800);assert.equal(r.monthEnd,189000);});
+test('overspending and recovery',()=>{const r=calculateMonth(s('2026-11'),[e('2026-11-25',157500),e('2026-11-26',30000),e('2026-11-28',5000)]);assert.deepEqual(r.days.slice(25).map(d=>d.available.display),[-23700,0,-5000,0,0]);assert.equal(r.days[27].dailyBalance.value,1300);assert.equal(r.monthEnd,-3500);});
+test('rounding and exact month end',()=>{const r=calculateMonth(s('2026-12'));assert.equal(r.dailyBudget.display,6096);assert.equal(r.days[1].available.display,12193);assert.equal(r.days[30].balance.value,189000);});
+test('negative carry and positive reset',()=>{assert.equal(calculateMonth(s('2026-12'),[],-3500).monthEnd,185500);assert.equal(calculateMonth(s('2026-12'),[],3500).carry,0);});
+test('past edits propagate and manual override stops incoming carry',()=>{const months=[s('2026-11'),s('2026-12'),s('2027-01',{carryMode:'manual',manualCarry:-500})];const r=calculateMonths(months,[e('2026-11-30',200000),e('2026-12-31',189000)]);assert.deepEqual(r.map(x=>x.carry),[0,-11000,-500]);assert.equal(r[1].monthEnd,-11000);});
+test('negative monthly budget',()=>{const r=calculateMonth(s('2026-11',{income:90000}));assert.equal(r.days[0].available.display,0);assert.equal(r.monthEnd,-11000);});
+test('leap years and month lengths',()=>{assert.equal(daysInMonth('2028-02'),29);assert.equal(daysInMonth('2026-02'),28);assert.equal(daysInMonth('2026-04'),30);});
+test('invalid inputs',()=>{assert.throws(()=>calculateMonth(s('2026-11'),[e('2026-11-31',1)]));assert.throws(()=>calculateMonth(s('2026-11'),[e('2026-11-01',0)]));assert.throws(()=>calculateMonth(s('2026-11',{carryMode:'manual',manualCarry:1})));});
